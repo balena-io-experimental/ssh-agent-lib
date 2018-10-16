@@ -1,0 +1,16 @@
+{
+  "name": "summit-ssh-client",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "ssh2": "^0.6.1",
+    "ssh2-streams": "^0.2.1",
+    "ursa": "^0.9.4"
+  }
+}
