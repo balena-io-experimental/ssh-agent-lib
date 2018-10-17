@@ -2,7 +2,8 @@ var Client = require('ssh2').Client;
 const net = require('net');
 const process = require('process');
 const crypto = require('crypto');
-const ursa = require('ursa');
+const request = require("request");
+const sshpk = require("sshpk");
 
 const SSH_AUTH_SOCK = '/tmp/io.balena.ssh_Listeners';
 const agentSocketPath = process.env.SSH_AUTH_SOCK;
@@ -52,67 +53,65 @@ function replyToClient(client, message, content) {
 
 function provideKeysToClient(client) {
 
-    const publicKeyPem = require('fs').readFileSync('/Users/richardb/.ssh/id_rsa.pub').toString();
+    request.get("https://api.resindev.io/auth/v1/ssh/abcde12345", { json: true }, (err, response, body) => {
 
-    const pkey = ursa.openSshPublicKey(publicKeyPem);
+        let keys = [];
+        body.keys.forEach((key) => {
+            keys.push(Buffer.from(key, "base64"));
+        });
 
-    let keys = [pkey.toPublicSsh()];
-    let keyCount = keys.length;
+        let keyCount = keys.length;
+    
+        let keysLength = 0;
+        keys.forEach((key) => {
+            keysLength += key.length;
+        });
+    
+        let message = Buffer.alloc(4 + keysLength + (keysLength * 4) + (keysLength * 4));
+    
+        message.writeUInt32BE(keyCount, 0);
+        let keyOffset = 4;
+        keys.forEach((key) => {
 
-    let keysLength = 0;
-    keys.forEach((key) => {
-        keysLength += key.length;
-    });
-
-    let message = Buffer.alloc(4 + keysLength + (keysLength * 4) + (keysLength * 4));
-
-    message.writeUInt32BE(keyCount, 0);
-    let keyOffset = 4;
-    keys.forEach((key) => {
-
-        // key blob...
-        message.writeUInt32BE(key.length, keyOffset);
-
-        for(pos = 0; pos < key.length; pos++) {
-            message.writeUInt8(key[pos], keyOffset + 4 + pos);
-        };
-        keyOffset += key.length + 4;
-
-        // key comment...
-        message.writeUInt32BE(0, keyOffset);
-
-        keyOffset += 4;
-    });
-
-    replyToClient(client, SSH_AGENT_IDENTITIES_ANSWER, message);
+            console.log("Key: " + key);
+    
+            // key blob...
+            message.writeUInt32BE(key.length, keyOffset);
+    
+            for(pos = 0; pos < key.length; pos++) {
+                message.writeUInt8(key[pos], keyOffset + 4 + pos);
+            };
+            keyOffset += key.length + 4;
+    
+            // key comment...
+            message.writeUInt32BE(0, keyOffset);
+    
+            keyOffset += 4;
+        });
+    
+        replyToClient(client, SSH_AGENT_IDENTITIES_ANSWER, message);
+    }).auth(null, null, true, 'dkZZw6EOooC6XSyzF88JXpOSCETUYKst');
 }
 
 function signRequestWithApi(client, publicKey, data, flags) {
 
-    const privateKeyPem = require('fs').readFileSync('/Users/richardb/.ssh/id_rsa.priv').toString();
-    // const pKey = ursa.createPrivateKey(privateKeyPem, 'K4thryn2009');
-    // const signature = pKey.hashAndSign("sha1", data);
+    request.post("https://api.resindev.io/auth/v1/ssh/abcde12345", { 
+        json: {
+            data: data.toString("base64"),
+            publicKey,
+            flags
+        }
+    }, (err, resp, body) => {
+        const signature = Buffer.from(body.signature, "base64");
+        const response = Buffer.alloc(4 + signature.length);
+        response.writeUInt32BE(signature.length, 0);
+        signature.copy(response, 4);
 
-    var signer = crypto.createSign("sha1");
-    signer.update(data);
-    const signature = signer.sign(privateKeyPem);
-
-    const bufLength = 8 + 7 + signature.length;
-    const buf = Buffer.alloc(bufLength);
-    buf.writeUInt32BE(7);
-    buf.write("ssh-rsa", 4, 7, "utf8");
-
-    buf.writeUInt32BE(signature.length, 11);
-    signature.copy(buf, 15);
-
-    const response = Buffer.alloc(4 + bufLength);
-    response.writeUInt32BE(bufLength, 0);
-    buf.copy(response, 4);
-
-    console.log('Signature: ' + buf.length);
-    console.log('Signature:\r\n', Buffer.concat([Buffer.alloc(5), response]));
-    
-    replyToClient(client, SSH_AGENT_SIGN_RESPONSE, response);
+        console.log('Signature: ' + response.length);
+        console.log('Signature:\r\n', Buffer.concat([Buffer.alloc(5), response]));
+        
+        replyToClient(client, SSH_AGENT_SIGN_RESPONSE, response);
+    }).auth(null, null, true, 'dkZZw6EOooC6XSyzF88JXpOSCETUYKst');
 }
 
 const srv = net.createServer((client) => {
@@ -151,7 +150,7 @@ const srv = net.createServer((client) => {
                 signRequestWithApi(client, publicKey, data, flags);
                 break;
             default:
-                agent.write(d);
+                // agent.write(d);
         }
     });
     agent.on('data', (d) => {
@@ -164,28 +163,6 @@ const srv = net.createServer((client) => {
 });
 srv.listen(SSH_AUTH_SOCK);
 
-var conn = new Client();
-
-conn.on('ready', function() {
-  console.log('Client :: ready');
-  
-  conn.exec('uptime', function(err, stream) {
-    if (err) throw err;
-    stream.on('close', function(code, signal) {
-      console.log('Stream :: close :: code: ' + code + ', signal: ' + signal);
-      conn.end();
-    }).on('data', function(data) {
-      console.log('STDOUT: ' + data);
-    }).stderr.on('data', function(data) {
-      console.log('STDERR: ' + data);
-    });
-  });
-}).connect({
-  host: '10.10.0.93',
-  port: 22,
-  username: 'pi',
-  agent: SSH_AUTH_SOCK
-});
 
 process.on('exit', function() {
     conn.destroy();
