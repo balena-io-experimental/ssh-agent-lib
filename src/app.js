@@ -46,7 +46,7 @@ function replyToClient(client, message, content) {
     };
 
     client.write(buf);
-    console.log('balena-agent->client:\n', buf);
+    console.log('agent->client:\n', buf);
     console.log("Length: " + len);
     console.log("Message: " + message);
 }
@@ -73,7 +73,7 @@ function provideKeysToClient(client) {
         let keyOffset = 4;
         keys.forEach((key) => {
 
-            console.log("Key: " + key);
+            // console.log("Key: " + key);
     
             // key blob...
             message.writeUInt32BE(key.length, keyOffset);
@@ -107,7 +107,7 @@ function signRequestWithApi(client, publicKey, data, flags) {
         response.writeUInt32BE(signature.length, 0);
         signature.copy(response, 4);
 
-        console.log('Signature: ' + response.length);
+        console.log('\nSignature: ' + response.length);
         console.log('Signature:\r\n', Buffer.concat([Buffer.alloc(5), response]));
         
         replyToClient(client, SSH_AGENT_SIGN_RESPONSE, response);
@@ -119,7 +119,7 @@ const srv = net.createServer((client) => {
     console.log('CLIENT CONNECTED');
     client.on('end', () => console.log('CLIENT DISCONNECTED'));
     client.on('data', (d) => {
-        console.log('client->agent', d);
+        console.log('client->agent\n', d);
         
 
         const messageLength = d.readUInt32BE(0);
