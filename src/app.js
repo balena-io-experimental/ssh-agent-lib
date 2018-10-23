@@ -1,9 +1,6 @@
-var Client = require('ssh2').Client;
 const net = require('net');
 const process = require('process');
-const crypto = require('crypto');
 const request = require("request");
-const sshpk = require("sshpk");
 
 const SSH_AUTH_SOCK = '/tmp/io.balena.ssh_Listeners';
 const agentSocketPath = process.env.SSH_AUTH_SOCK;
@@ -95,7 +92,7 @@ function provideKeysToClient(client) {
 
 function signRequestWithApi(client, publicKey, data, flags) {
 
-    request.post("https://api.resindev.io/auth/v1/ssh/abcde12345", { 
+    request.post("https://api.resindev.io/auth/v1/ssh/97449521a1117713b9d81f51bd037c98", { 
         json: {
             data: data.toString("base64"),
             publicKey,
