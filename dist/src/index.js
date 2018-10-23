@@ -29,8 +29,7 @@ var net_1 = require("net");
 var winston = __importStar(require("winston"));
 var logger = winston.createLogger({
     level: "info",
-    format: winston.format.json(),
-    transports: [new winston.transports.Console()]
+    format: winston.format.json()
 });
 //
 // If we're not in production then log to the `console` with the format:
@@ -60,41 +59,40 @@ var BalenaSshAgent = /** @class */ (function (_super) {
         _this.socket = new net_1.Server();
         _this.readyToListen = false;
         _this.handleAgentRequest = function (client) {
-            var self = _this;
+            // const self = this;
             client.on("data", function (d) {
                 var messageLength = d.readUInt32BE(0);
                 var messageNumber = d.readUInt8(4);
                 switch (messageNumber) {
                     case AgentMessageType.SSH_AGENTC_REQUEST_IDENTITIES: // request identities...
-                        self.getKeysForClient().then(function (keys) {
+                        _this.getKeysForClient().then(function (keys) {
                             console.log("== Keys: " + keys.length);
-                            return self.provideKeysToClient(keys, client);
+                            return _this.provideKeysToClient(keys, client);
                         });
                         break;
                     case AgentMessageType.SSH_AGENTC_SIGN_REQUEST:
                         var publicKey_1 = "";
                         var data_1;
                         var pos_1 = 5;
-                        self
-                            .readString(d, pos_1)
+                        _this.readString(d, pos_1)
                             .then(function (_a) {
                             var value = _a.value, offset = _a.offset;
                             publicKey_1 = value.toString("utf8");
                             pos_1 = offset;
-                            return self.readString(d, offset);
+                            return _this.readString(d, offset);
                         })
                             .then(function (_a) {
                             var value = _a.value, offset = _a.offset;
                             data_1 = Buffer.alloc(value.length, value);
                             pos_1 = offset;
-                            return self.readString(d, offset);
+                            return _this.readString(d, offset);
                         })
                             .then(function () {
                             var flags = d.readUInt32BE(pos_1);
-                            return self.signRequestWithApi(publicKey_1, data_1, flags);
+                            return _this.signRequestWithApi(publicKey_1, data_1, flags);
                         })
                             .then(function (signature) {
-                            return self.replyToClient(client, AgentMessageType.SSH_AGENT_SIGN_RESPONSE, signature);
+                            return _this.replyToClient(client, AgentMessageType.SSH_AGENT_SIGN_RESPONSE, signature);
                         });
                         break;
                 }
@@ -160,10 +158,10 @@ var BalenaSshAgent = /** @class */ (function (_super) {
                 if (!result) {
                     reject();
                 }
-            }).then(function (_a) {
+            })
+                .then(function (_a) {
                 var apiKey = _a.apiKey, deviceUuid = _a.deviceUuid;
-                return request
-                    .post("" + _this.config.authApiEndpoint + _this.config.authApiPath + deviceUuid, {
+                return request.post("" + _this.config.authApiEndpoint + _this.config.authApiPath + deviceUuid, {
                     json: {
                         data: data.toString("base64"),
                         //   publicKey,
@@ -172,14 +170,14 @@ var BalenaSshAgent = /** @class */ (function (_super) {
                     auth: {
                         bearer: apiKey
                     }
-                })
-                    .then(function (body) {
-                    var signature = Buffer.from(body.signature, "base64");
-                    var response = Buffer.alloc(4 + signature.length);
-                    response.writeUInt32BE(signature.length, 0);
-                    signature.copy(response, 4);
-                    return response;
                 });
+            })
+                .then(function (body) {
+                var signature = Buffer.from(body.signature, "base64");
+                var response = Buffer.alloc(4 + signature.length);
+                response.writeUInt32BE(signature.length, 0);
+                signature.copy(response, 4);
+                return response;
             });
         };
         _.extend(_this.config, config);
@@ -237,6 +235,11 @@ var BalenaSshAgent = /** @class */ (function (_super) {
                 buf.writeUInt8(content[pos], 5 + pos);
             }
             client.write(buf, function () {
+                logger.log({
+                    level: "info",
+                    message: "->",
+                    info: buf.toString("hex").replace(/(.{2})/g, "$1 ")
+                });
                 resolve();
             });
         });

@@ -8,8 +8,7 @@ import * as winston from "winston";
 
 const logger = winston.createLogger({
   level: "info",
-  format: winston.format.json(),
-  transports: [new winston.transports.Console()]
+  format: winston.format.json()
 });
 
 //
@@ -129,47 +128,51 @@ export class BalenaSshAgent extends EventEmitter {
       }
 
       client.write(buf, () => {
+        logger.log({
+          level: "info",
+          message: "->",
+          info: buf.toString("hex").replace(/(.{2})/g, "$1 ")
+        });
         resolve();
       });
     });
   }
 
   private handleAgentRequest = (client: Socket) => {
-    const self = this;
+    // const self = this;
     client.on("data", d => {
       const messageLength = d.readUInt32BE(0);
       const messageNumber = d.readUInt8(4);
 
       switch (messageNumber) {
         case AgentMessageType.SSH_AGENTC_REQUEST_IDENTITIES: // request identities...
-          self.getKeysForClient().then(keys => {
+          this.getKeysForClient().then(keys => {
             console.log(`== Keys: ${keys.length}`);
-            return self.provideKeysToClient(keys, client);
+            return this.provideKeysToClient(keys, client);
           });
           break;
         case AgentMessageType.SSH_AGENTC_SIGN_REQUEST:
           let publicKey = "";
           let data: Buffer;
           let pos = 5;
-          self
-            .readString(d, pos)
+          this.readString(d, pos)
             .then(({ value, offset }) => {
               publicKey = value.toString("utf8");
               pos = offset;
-              return self.readString(d, offset);
+              return this.readString(d, offset);
             })
             .then(({ value, offset }) => {
               data = Buffer.alloc(value.length, value);
               pos = offset;
-              return self.readString(d, offset);
+              return this.readString(d, offset);
             })
             .then(() => {
               const flags = d.readUInt32BE(pos);
 
-              return self.signRequestWithApi(publicKey, data, flags);
+              return this.signRequestWithApi(publicKey, data, flags);
             })
             .then(signature => {
-              return self.replyToClient(
+              return this.replyToClient(
                 client,
                 AgentMessageType.SSH_AGENT_SIGN_RESPONSE,
                 signature
@@ -273,9 +276,9 @@ export class BalenaSshAgent extends EventEmitter {
       if (!result) {
         reject();
       }
-    }).then(({ apiKey, deviceUuid }) => {
-      return request
-        .post(
+    })
+      .then(({ apiKey, deviceUuid }) => {
+        return request.post(
           `${this.config.authApiEndpoint}${
             this.config.authApiPath
           }${deviceUuid}`,
@@ -289,15 +292,15 @@ export class BalenaSshAgent extends EventEmitter {
               bearer: apiKey
             }
           }
-        )
-        .then(body => {
-          const signature = Buffer.from(body.signature, "base64");
-          const response = Buffer.alloc(4 + signature.length);
-          response.writeUInt32BE(signature.length, 0);
-          signature.copy(response, 4);
+        );
+      })
+      .then(body => {
+        const signature = Buffer.from(body.signature, "base64");
+        const response = Buffer.alloc(4 + signature.length);
+        response.writeUInt32BE(signature.length, 0);
+        signature.copy(response, 4);
 
-          return response;
-        });
-    });
+        return response;
+      });
   };
 }
